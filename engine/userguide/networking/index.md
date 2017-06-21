@@ -60,7 +60,7 @@ by container name, you should use user-defined networks instead. You can link
 two containers together using the legacy `docker run --link` option, but this
 is not recommended in most cases.
 
-#### Linux Example -- `busybox` containers connected to the `bridge` network
+### Linux Example -- `busybox` containers connected to the `bridge` network
 Run the following two commands to start two `busybox` containers, which are each connected to the default `bridge` network.
 
 ```bash
@@ -184,7 +184,7 @@ The default `docker0` bridge network supports the use of port mapping and
 network. This approach is not recommended. Where possible, you should use
 [user-defined bridge networks](#user-defined-networks) instead.
 
-#### Windows Example -- `microsoft/iis` containers connected to the `nat` network
+### Windows Example -- `microsoft/iis` containers connected to the `nat` network
 Run the following two commands to start two `microsoft/iis` containers, which are each connected to the default `nat` network.
 
 ```cmd
