@@ -14,138 +14,63 @@ networks on a single host or across a cluster of hosts.
 
 ## Default Networks
 
-When you install Docker, it creates three networks automatically. You can list
-these networks using the `docker network ls` command:
+By default, Docker creates several networks for you:
+- The `bridge` network (or it's equivalent on Windows, `nat`) is the default network for connecting the containers running on a given container host. Unless you specify otherwise with the `--network=<NETWORK>` option to the `docker run` command, the Docker daemon will connect your containers to this network by default.
+- The `none` network adds a container to a container-specific network stack. That container lacks a network interface. ***TODO: This is unclear--when a container is attached to none, is it just not attached to any network? What's the difference between this behavior on Windows vs. Linux?***
+- **(Linux only)** The `host` network adds a container on the host's network stack. As far as the container. For instance, if you run a container that runs a web server on port 80 using host networking, the web server is available on port 80 of the host machine.
 
+You can list these networks using the `docker network ls` command:
+
+#### Linux Local Default Networks
 ```
 $ docker network ls
-
 NETWORK ID          NAME                DRIVER
 7fca4eb8c647        bridge              bridge
 9f904ee27bf5        none                null
 cf03ee007fb4        host                host
 ```
-
-These three networks are built into Docker. When
-you run a container, you can use the `--network` flag to specify which networks
-your container should connect to.
-
-The `bridge` network represents the `docker0` network present in all Docker
-installations. Unless you specify otherwise with the `docker run
---network=<NETWORK>` option, the Docker daemon connects containers to this network
-by default. You can see this bridge as part of a host's network stack by using
-the `ifconfig` command on the host.
-
-```bash
-$ ifconfig
-
-docker0   Link encap:Ethernet  HWaddr 02:42:47:bc:3a:eb
-          inet addr:172.17.0.1  Bcast:0.0.0.0  Mask:255.255.0.0
-          inet6 addr: fe80::42:47ff:febc:3aeb/64 Scope:Link
-          UP BROADCAST RUNNING MULTICAST  MTU:9001  Metric:1
-          RX packets:17 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
-          collisions:0 txqueuelen:0
-          RX bytes:1100 (1.1 KB)  TX bytes:648 (648.0 B)
+#### Windows Local Default Networks
 ```
-
-The `none` network adds a container to a container-specific network stack. That
-container lacks a network interface. Attaching to such a container and looking
-at its stack you see this:
-
-```bash
-$ docker attach nonenetcontainer
-
-root@0cb243cd1293:/# cat /etc/hosts
-127.0.0.1	localhost
-::1	localhost ip6-localhost ip6-loopback
-fe00::0	ip6-localnet
-ff00::0	ip6-mcastprefix
-ff02::1	ip6-allnodes
-ff02::2	ip6-allrouters
-root@0cb243cd1293:/# ifconfig
-lo        Link encap:Local Loopback
-          inet addr:127.0.0.1  Mask:255.0.0.0
-          inet6 addr: ::1/128 Scope:Host
-          UP LOOPBACK RUNNING  MTU:65536  Metric:1
-          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
-          collisions:0 txqueuelen:0
-          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
-
-root@0cb243cd1293:/#
+$ docker network ls
+C:\>docker network ls
+NETWORK ID          NAME                DRIVER              SCOPE
+2f1bf650d854        nat                 nat                 local
+aaa00baa3e90        none                null                local
 ```
-
->**Note**: You can detach from the container and leave it running with `CTRL-p CTRL-q`.
-
-The `host` network adds a container on the host's network stack. As far as the
-network is concerned, there is no isolation between the host machine and the
-container. For instance, if you run a container that runs a web server on port
-80 using host networking, the web server is available on port 80 of the host
-machine.
+> **Note:** The above networks are the default networks for single-host/local configurations. When Docker is run in [Swarm Mode](https://docs.docker.com/engine/swarm/), to support multi-host configurations, an additional default network is created--the default `ingress` network, which is used for service publishing.
 
 The `none` and `host` networks are not directly configurable in Docker.
-However, you can configure the default `bridge` network, as well as your own
-user-defined bridge networks.
+However, you can configure the default `bridge` network, as well as your ownuser-defined bridge networks.
 
 
-### The default bridge network
+### The default `bridge` network (`nat` on Windows)
 
-The default `bridge` network is present on all Docker hosts. If you do not
-specify a different network, new containers are automatically connected to the
-default `bridge` network.
+The default `bridge` network, which is equivalent to the `nat` network on Windows,
+is present on all Docker hosts. If you do not specify a different network, new
+containers are automatically connected to the default `bridge`/`nat` network.
 
-The `docker network inspect` command returns information about a network:
+Containers connected to the default `bridge`/`nat` network can communicate with each
+other by IP address. On Windows, containers on the `nat` network can also communicate
+with each other by name, using service discovery.
 
-```none
-$ docker network inspect bridge
+***TODO: Is the below still true for Linux?***
+On Linux, Docker does not support automatic service discovery on the
+default bridge network. If you want containers to be able to resolve IP addresses
+by container name, you should use user-defined networks instead. You can link
+two containers together using the legacy `docker run --link` option, but this
+is not recommended in most cases.
 
-[
-   {
-       "Name": "bridge",
-       "Id": "f7ab26d71dbd6f557852c7156ae0574bbf62c42f539b50c8ebde0f728a253b6f",
-       "Scope": "local",
-       "Driver": "bridge",
-       "IPAM": {
-           "Driver": "default",
-           "Config": [
-               {
-                   "Subnet": "172.17.0.1/16",
-                   "Gateway": "172.17.0.1"
-               }
-           ]
-       },
-       "Containers": {},
-       "Options": {
-           "com.docker.network.bridge.default_bridge": "true",
-           "com.docker.network.bridge.enable_icc": "true",
-           "com.docker.network.bridge.enable_ip_masquerade": "true",
-           "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
-           "com.docker.network.bridge.name": "docker0",
-           "com.docker.network.driver.mtu": "9001"
-       },
-       "Labels": {}
-   }
-]
-```
-
-Run the following two commands to start two `busybox` containers, which are each
-connected to the default `bridge` network.
+#### Linux Example -- `busybox` containers connected to the `bridge` network
+Run the following two commands to start two `busybox` containers, which are each connected to the default `bridge` network.
 
 ```bash
 $ docker run -itd --name=container1 busybox
-
 3386a527aa08b37ea9232cbcace2d2458d49f44bb05a6b775fba7ddd40d8f92c
 
 $ docker run -itd --name=container2 busybox
-
 94447ca479852d29aeddca75c28f7104df3c3196d7b6d83061879e339946805c
 ```
-
-Inspect the `bridge` network again after starting two containers. Both of the
-`busybox` containers are connected to the network. Make note of their IP
-addresses, which will be different on your host machine than in the example
-below.
+Inspect the `bridge` network again after starting two containers. Both of the `busybox` containers are connected to the network. Make note of their IP addresses, which will be different on your host machine than in the example below.
 
 ```none
 $ docker network inspect bridge
@@ -191,14 +116,6 @@ $ docker network inspect bridge
     }
 ]
 ```
-
-Containers connected to the default `bridge` network can communicate with each
-other by IP address. Docker does not support automatic service discovery on the
-default bridge network. If you want containers to be able to resolve IP addresses
-by container name, you should use user-defined networks instead. You can link
-two containers together using the legacy `docker run --link` option, but this
-is not recommended in most cases.
-
 You can `attach` to a running `container` to see how the network looks from
 inside the container. You are connected as `root`, so your command prompt is
 a `#` character.
@@ -266,6 +183,88 @@ The default `docker0` bridge network supports the use of port mapping and
 `docker run --link` to allow communications among containers in the `docker0`
 network. This approach is not recommended. Where possible, you should use
 [user-defined bridge networks](#user-defined-networks) instead.
+
+#### Windows Example -- `microsoft/iis` containers connected to the `nat` network
+Run the following two commands to start two `microsoft/iis` containers, which are each connected to the default `nat` network.
+
+```cmd
+C:\> docker run -itd --name=container1 microsoft/iis
+3c13bb5081744c4952d3bd9645e6ea034c549fbd93f8f8148b815403ec624c01
+
+C:\> docker run -itd --name=container2 microsoft/iis
+4141f6c982928662a3fde9fe80ee604a51a2be464b9ee1258569a5efd45dd118
+```
+Inspect the `nat` network again after starting two containers. Both of the `microsoft/iis` containers are connected to the network. Make note of their IP addresses, which will be different on your host machine than in the example below.
+
+```none
+C:\> docker network inspect nat
+[
+    {
+        "Name": "nat",
+        "Id": "7c981c8c9f9ddfa4e7d161d5ccb521b8ac320097aab0822fe8f7ce71289cdfb2",
+        "Created": "2017-06-21T06:53:22.2399171Z",
+        "Scope": "local",
+        "Driver": "nat",
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "windows",
+            "Options": null,
+            "Config": [
+                {
+                    "Subnet": "172.19.16.0/24",
+                    "Gateway": "172.19.16.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Containers": {
+            "3c13bb5081744c4952d3bd9645e6ea034c549fbd93f8f8148b815403ec624c01": {
+                "Name": "container1",
+                "EndpointID": "c66ba94ea773be37c5e0b7f6ecc3e9609e96fae8012e252896bb54726b7612ec",
+                "MacAddress": "00:15:5d:a1:53:07",
+                "IPv4Address": "172.19.16.10/16",
+                "IPv6Address": ""
+            },
+            "4141f6c982928662a3fde9fe80ee604a51a2be464b9ee1258569a5efd45dd118": {
+                "Name": "container2",
+                "EndpointID": "725a0bd6e3de5dfab6ed6c103f37b2e440deb1f3e95a4175644b053e3d986f09",
+                "MacAddress": "00:15:5d:a1:50:e0",
+                "IPv4Address": "172.19.16.92/16",
+                "IPv6Address": ""
+            }
+        },
+        "Options": {
+            "com.docker.network.windowsshim.hnsid": "8f72871e-1c48-493a-82c9-25ed4ec3802c",
+            "com.docker.network.windowsshim.networkname": "nat"
+        },
+        "Labels": {}
+    }
+]
+```
+You can also test service discovery between the two containers. Try running the following
+experiment to demonstrate name-based communication between your containers.
+```none
+C:\Users\kabracke>docker ps
+CONTAINER ID        IMAGE               COMMAND                   CREATED             STATUS              PORTS               NAMES
+4141f6c98292        microsoft/iis       "C:\\ServiceMonitor..."   9 minutes ago       Up 9 minutes        80/tcp              container2
+3c13bb508174        microsoft/iis       "C:\\ServiceMonitor..."   10 minutes ago      Up 10 minutes       80/tcp              container1
+
+C:\Users\kabracke>docker exec 3c13bb508174 ping container2
+
+Pinging container2 [172.19.16.92] with 32 bytes of data:
+Reply from 172.19.16.92: bytes=32 time<1ms TTL=128
+Reply from 172.19.16.92: bytes=32 time<1ms TTL=128
+Reply from 172.19.16.92: bytes=32 time<1ms TTL=128
+Reply from 172.19.16.92: bytes=32 time<1ms TTL=128
+
+Ping statistics for 172.19.16.92:
+    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),
+Approximate round trip times in milli-seconds:
+    Minimum = 0ms, Maximum = 0ms, Average = 0ms
+```
+
+
 
 ## User-defined networks
 
@@ -535,6 +534,89 @@ network and user-defined bridge networks.
 
   b9788c7adca3        nginx               "nginx -g 'daemon ..."   43 hours ago        Up 3 seconds        80/tcp, 443/tcp, 0.0.0.0:8080->80/tcp   goofy_brahmagupta
   ```
+## Useful Networking Commands
+These three networks are built into Docker. When
+you run a container, you can use the `--network` flag to specify which networks
+your container should connect to.
+
+You can see this bridge as part of a host's network stack by using
+the `ifconfig` command on the host.
+
+```bash
+$ ifconfig
+
+docker0   Link encap:Ethernet  HWaddr 02:42:47:bc:3a:eb
+          inet addr:172.17.0.1  Bcast:0.0.0.0  Mask:255.255.0.0
+          inet6 addr: fe80::42:47ff:febc:3aeb/64 Scope:Link
+          UP BROADCAST RUNNING MULTICAST  MTU:9001  Metric:1
+          RX packets:17 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:8 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:1100 (1.1 KB)  TX bytes:648 (648.0 B)
+```
+
+The `none` network adds a container to a container-specific network stack. That
+container lacks a network interface. Attaching to such a container and looking
+at its stack you see this:
+
+```bash
+$ docker attach nonenetcontainer
+
+root@0cb243cd1293:/# cat /etc/hosts
+127.0.0.1	localhost
+::1	localhost ip6-localhost ip6-loopback
+fe00::0	ip6-localnet
+ff00::0	ip6-mcastprefix
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters
+root@0cb243cd1293:/# ifconfig
+lo        Link encap:Local Loopback
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+root@0cb243cd1293:/#
+```
+
+>**Note**: You can detach from the container and leave it running with `CTRL-p CTRL-q`.
+
+The `docker network inspect` command returns information about a network:
+
+```none
+$ docker network inspect bridge
+
+[
+   {
+       "Name": "bridge",
+       "Id": "f7ab26d71dbd6f557852c7156ae0574bbf62c42f539b50c8ebde0f728a253b6f",
+       "Scope": "local",
+       "Driver": "bridge",
+       "IPAM": {
+           "Driver": "default",
+           "Config": [
+               {
+                   "Subnet": "172.17.0.1/16",
+                   "Gateway": "172.17.0.1"
+               }
+           ]
+       },
+       "Containers": {},
+       "Options": {
+           "com.docker.network.bridge.default_bridge": "true",
+           "com.docker.network.bridge.enable_icc": "true",
+           "com.docker.network.bridge.enable_ip_masquerade": "true",
+           "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
+           "com.docker.network.bridge.name": "docker0",
+           "com.docker.network.driver.mtu": "9001"
+       },
+       "Labels": {}
+   }
+]
+```
 
 ## Links
 
